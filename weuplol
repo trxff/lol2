@@ -1,0 +1,290 @@
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = game.Workspace.CurrentCamera
+local RS = game:GetService("RunService")
+
+-- Silent Aim settings
+local SilentAimSettings = {
+    Enabled = true,
+    Part = "UpperTorso",
+    Pred = 0.12962,
+    ClosestPart = true,
+}
+
+-- FOV settings
+local FOVSettings = {
+    Visible = false,
+    Radius = 80.5,
+}
+
+local IsTargetingEnabled = false
+local IsSpectatingEnabled = false
+local IsStrafingEnabled = false
+local ToggleKey = Enum.KeyCode.Q
+local TargetedPlayer = nil
+
+local Circle = Drawing.new("Circle")
+Circle.Color = Color3.new(1, 1, 1)
+Circle.Thickness = 1
+
+local function UpdateFOV()
+    if not Circle then return end
+    Circle.Visible = FOVSettings.Visible
+    Circle.Radius = FOVSettings.Radius * 3
+    Circle.Position = Vector2.new(Mouse.X, Mouse.Y + (game:GetService("GuiService"):GetGuiInset().Y))
+end
+
+RS.RenderStepped:Connect(UpdateFOV)
+
+local function CreateExploitNotification(player)
+    local Notification = Instance.new("ScreenGui")
+    Notification.Name = "ExploitNotification"
+    Notification.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0.06, 0, 0.03, 0)  -- Smaller size
+    Frame.Position = UDim2.new(-0.06, 0, 0.08, 0)  -- Start position slightly lower from the top left corner
+    Frame.AnchorPoint = Vector2.new(0, 0)  -- Anchor point to the top left corner
+    Frame.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+    Frame.BorderSizePixel = 0
+    Frame.Parent = Notification
+
+    local TextLabel = Instance.new("TextLabel")
+    TextLabel.Text = "Target: " .. player.DisplayName  -- Adjusted text
+    TextLabel.Size = UDim2.new(1, 0, 1, 0)
+    TextLabel.Font = Enum.Font.SourceSansBold
+    TextLabel.TextSize = 14  -- Adjusted font size
+    TextLabel.TextScaled = true
+    TextLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TextLabel.BackgroundTransparency = 1
+    TextLabel.Parent = Frame
+
+    -- Animation
+    Frame:TweenPosition(UDim2.new(0, 0, 0.05, 0), "Out", "Quint", 0.5)  -- Slide in from the left side
+
+    wait(2)
+
+    -- Animation
+    Frame:TweenPosition(UDim2.new(-0.06, 0, 0.08, 0), "In", "Quint", 0.5)  -- Move back to the left side
+
+    wait(0.5)
+
+    Notification:Destroy()
+end
+
+local function ShowNotification(player)
+    CreateExploitNotification(player)
+end
+
+local function FindClosestPlayerFromMouse()
+    local target, closest = nil, math.huge
+    for _, v in pairs(Players:GetPlayers()) do
+        if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+            local position, onScreen = Camera:WorldToScreenPoint(v.Character.HumanoidRootPart.Position)
+            local distance = (Vector2.new(position.X, position.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+            if distance < closest and onScreen then
+                closest = distance
+                target = v
+            end
+        end
+    end
+    return target
+end
+
+local function WTS(Object)
+    local ObjectVector = Camera:WorldToScreenPoint(Object.Position)
+    return Vector2.new(ObjectVector.X, ObjectVector.Y)
+end
+
+local function IsOnScreen(Object)
+    local IsOnScreen = Camera:WorldToScreenPoint(Object.Position)
+    return IsOnScreen
+end
+
+local function FilterObjs(Object)
+    if string.find(Object.Name, "Gun") then
+        return
+    end
+    if table.find({"Part", "MeshPart", "BasePart"}, Object.ClassName) then
+        return true
+    end
+end
+
+local function GetClosestBodyPart(character)
+    local closestDistance = math.huge
+    local bodyPart = nil
+    if character and character:GetChildren() then
+        for _, x in pairs(character:GetChildren()) do
+            if FilterObjs(x) and IsOnScreen(x) then
+                local distance = (WTS(x) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+                if Circle.Radius > distance and distance < closestDistance then
+                    closestDistance = distance
+                    bodyPart = x
+                end
+            end
+        end
+    end
+    return bodyPart
+end
+
+local function PreyLoop()
+    while true do
+        if TargetedPlayer then
+            if SilentAimSettings.Enabled and SilentAimSettings.ClosestPart then
+                SilentAimSettings.Part = tostring(GetClosestBodyPart(TargetedPlayer.Character))
+            end
+        end
+        RS.Heartbeat:Wait()
+    end
+end
+
+local function ToggleTargeting()
+    IsTargetingEnabled = not IsTargetingEnabled
+    if IsTargetingEnabled then
+        TargetedPlayer = FindClosestPlayerFromMouse()
+        if TargetedPlayer then
+            ShowNotification(TargetedPlayer)
+        end
+    else
+        TargetedPlayer = nil
+    end
+end
+
+local function ToggleSpectating()
+    IsSpectatingEnabled = not IsSpectatingEnabled
+    if IsSpectatingEnabled and TargetedPlayer then
+        Camera.CameraSubject = TargetedPlayer.Character.Humanoid
+    else
+        Camera.CameraSubject = LocalPlayer.Character.Humanoid
+    end
+end
+
+local function ToggleStrafing()
+    IsStrafingEnabled = not IsStrafingEnabled
+    if IsStrafingEnabled then
+        -- Implement strafing logic here
+        print("Strafing enabled.")
+    else
+        -- Disable strafing
+        print("Strafing disabled.")
+    end
+end
+
+game:GetService("UserInputService").InputBegan:Connect(function(input)
+    if input.KeyCode == ToggleKey then
+        ToggleTargeting()
+        ToggleSpectating()
+        ToggleStrafing()
+    end
+end)
+
+local grmt = getrawmetatable(game)
+local backupindex = grmt.__index
+setreadonly(grmt, false)
+
+grmt.__index = newcclosure(function(self, v)
+    if SilentAimSettings.Enabled and Mouse and tostring(v) == "Hit" then
+        if IsTargetingEnabled and TargetedPlayer then
+            local endpoint = game.Players[tostring(TargetedPlayer)].Character[SilentAimSettings.Part].CFrame + (
+                game.Players[tostring(TargetedPlayer)].Character[SilentAimSettings.Part].Velocity * SilentAimSettings.Pred
+            )
+            return tostring(v) == "Hit" and endpoint
+        end
+    end
+    return backupindex(self, v)
+end)
+
+-- Define the target player (change this to the desired target)
+local TargetPlayer = nil -- Set the target player to nil initially
+
+-- Smoothness of the aim lock (lower values for smoother movement)
+local Smoothness = 0.1
+
+-- Distance from the target player to circle around (adjust as needed)
+local CircleRadius = 30 -- Adjust the radius to control how close the character will circle around the target player
+
+-- Movement speed while circling
+local CircleSpeed = 50 -- Adjust the speed as needed (lower value for slower circling)
+
+-- Function to find the closest player from mouse
+local function ClosestPlayerFromMouse()
+    local target, closest = nil, math.huge
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local position, onScreen = Camera:WorldToScreenPoint(player.Character.HumanoidRootPart.Position)
+            local distance = (Vector2.new(position.X, position.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+            if distance < closest and onScreen then
+                closest = distance
+                target = player
+            end
+        end
+    end
+    return target
+end
+
+-- Function to update the camera's position to aim at the target smoothly
+local function UpdateCamera()
+    if TargetPlayer and TargetPlayer.Character then
+        local targetPosition = TargetPlayer.Character.Head.Position
+        local lookAt = CFrame.new(Camera.CFrame.Position, targetPosition)
+        local newCameraCFrame = Camera.CFrame:lerp(lookAt, Smoothness) -- Smoothly interpolate between the current and target position
+        Camera.CFrame = newCameraCFrame
+    end
+end
+
+-- Function to smoothly circle around the target player
+local function CircleAroundTarget()
+    if TargetPlayer and TargetPlayer.Character then
+        local targetPosition = TargetPlayer.Character.Head.Position
+        local time = tick() * CircleSpeed
+        local xOffset = CircleRadius * math.cos(time)
+        local zOffset = CircleRadius * math.sin(time)
+        local yOffset = 20  -- Adjust this value to control the height above the target
+        local offset = Vector3.new(xOffset, yOffset, zOffset)
+        LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(targetPosition + offset)
+    end
+end
+
+-- Function to spectate the target player
+local function SpectateTargetPlayer()
+    if TargetPlayer and TargetPlayer.Character then
+        local targetPosition = TargetPlayer.Character.Head.Position
+        Camera.CFrame = CFrame.new(targetPosition + Vector3.new(0, 20, -15), targetPosition) -- Adjust the camera position and look at the target player
+    end
+end
+
+-- Toggle the aim lock on/off
+local ToggleKey = Enum.KeyCode.Q -- Change this to the desired toggle key
+local IsAimLockEnabled = false
+
+game:GetService("UserInputService").InputBegan:Connect(function(input)
+    if input.KeyCode == ToggleKey then
+        IsAimLockEnabled = not IsAimLockEnabled
+        if IsAimLockEnabled then
+            TargetPlayer = ClosestPlayerFromMouse()
+            if TargetPlayer then
+                print("Aim lock enabled. Targeting: " .. TargetPlayer.Name)
+            else
+                print("No valid target found.")
+                IsAimLockEnabled = false
+            end
+        else
+            TargetPlayer = nil
+            print("Aim lock disabled.")
+        end
+    end
+end)
+
+-- Connect the function to update the camera to the render step
+game:GetService("RunService").RenderStepped:Connect(UpdateCamera)
+
+-- Connect the function to smoothly circle around the target player to the render step
+game:GetService("RunService").RenderStepped:Connect(CircleAroundTarget)
+
+-- Connect the function to spectate the target player to the render step
+game:GetService("RunService").RenderStepped:Connect(SpectateTargetPlayer)
